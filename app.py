@@ -12,12 +12,15 @@ import math
 import re
 import csv
 import json
+import base64
 from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
-# ----------------- KHỞI TẠO BỘ NHỚ ĐỆM -----------------
+# =====================================================================
+# 1. KHỞI TẠO BỘ NHỚ ĐỆM (SESSION STATE) CHO ỨNG DỤNG
+# =====================================================================
 if 'processed_data' not in st.session_state: st.session_state.processed_data = None
 if 'export_mode_used' not in st.session_state: st.session_state.export_mode_used = None
 if 'preview_data' not in st.session_state: st.session_state.preview_data = None
@@ -26,7 +29,9 @@ if 'trans_file_name' not in st.session_state: st.session_state.trans_file_name =
 
 st.set_page_config(page_title="AI Document Tool", layout="wide")
 
-# ----------------- HÀM TIỆN ÍCH DỊCH THUẬT NÂNG CẤP -----------------
+# =====================================================================
+# 2. HÀM TIỆN ÍCH DỊCH THUẬT NÂNG CẤP
+# =====================================================================
 def translate_texts_batch(texts_list, target_lang, model, skip_english, skip_abbreviations):
     """Gom nhóm văn bản và gửi qua Gemini để dịch kèm các bộ lọc thông minh"""
     if not texts_list:
@@ -59,13 +64,11 @@ def translate_texts_batch(texts_list, target_lang, model, skip_english, skip_abb
         - KHÔNG kèm theo các ký tự định dạng khối mã Markdown (như ```json) hay bất kỳ câu chữ giải thích nào khác ngoài mảng JSON.
         """
         
-        # Áp dụng bộ lọc Không dịch Tiếng Anh
+        # Áp dụng bộ lọc
         if skip_english:
-            prompt += "\n- CẤM DỊCH TIẾNG ANH: Nếu phát hiện chuỗi văn bản, câu hoặc từ ngữ nào hoàn toàn bằng Tiếng Anh (hoặc là các mã hiệu kỹ thuật dạng ký tự Latinh), bạn phải GIỮ NGUYÊN GỐC, tuyệt đối không dịch sang ngôn ngữ khác."
-            
-        # Áp dụng bộ lọc Không dịch từ viết tắt
+            prompt += "\n- CẤM DỊCH TIẾNG ANH: Nếu phát hiện chuỗi văn bản hoàn toàn bằng Tiếng Anh (hoặc là các mã hiệu kỹ thuật dạng ký tự Latinh), bạn phải GIỮ NGUYÊN GỐC, tuyệt đối không dịch."
         if skip_abbreviations:
-            prompt += "\n- CẤM DỊCH TỪ VIẾT TẮT: Nếu gặp các từ viết tắt viết hoa chuyên ngành (Ví dụ: BOQ, OPBRC, PRTC, BTCT, VAT, XD, USD, ...), bạn phải GIỮ NGUYÊN KÝ TỰ VIẾT TẮT ĐÓ, tuyệt đối không diễn giải hoặc dịch nghĩa chúng."
+            prompt += "\n- CẤM DỊCH TỪ VIẾT TẮT: Nếu gặp các từ viết tắt viết hoa chuyên ngành (Ví dụ: BOQ, OPBRC, PRTC, BTCT, VAT, XD, USD, ...), bạn phải GIỮ NGUYÊN KÝ TỰ, tuyệt đối không dịch nghĩa chúng."
         
         prompt += f"\n\nINPUT JSON:\n{json.dumps(chunk, ensure_ascii=False)}"
         
@@ -82,11 +85,10 @@ def translate_texts_batch(texts_list, target_lang, model, skip_english, skip_abb
                     break
             except Exception as e:
                 if attempt == max_retries - 1:
-                    # Nếu thử lại hết mẻ vẫn lỗi, giữ nguyên gốc đoạn đó để không làm sập chương trình
                     for orig in chunk: mapping[orig] = orig
                 time.sleep(3)
                 
-        time.sleep(2.5)  # Giãn cách an toàn chủ động để chống khóa API ngắn hạn
+        time.sleep(2.5)  # Giãn cách an toàn chủ động
         
     status.empty()
     progress_bar.empty()
@@ -98,8 +100,9 @@ def set_docx_font(run, font_name):
     run.font.name = font_name
     run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
 
-
-# ================= GIAO DIỆN CHÍNH APPLICATION =================
+# =====================================================================
+# 3. GIAO DIỆN CHÍNH APPLICATION
+# =====================================================================
 st.sidebar.title("🛠️ CÔNG CỤ XỬ LÝ AI")
 app_mode = st.sidebar.radio("Chọn chức năng hoạt động:", ["📄 1. Chức năng OCR (Đọc PDF)", "🌐 2. Chức năng Dịch (Excel/Word)"])
 
@@ -108,13 +111,15 @@ api_key = st.sidebar.text_input("🔑 Nhập Gemini API Key:", type="password")
 model_choice = st.sidebar.selectbox("🤖 Chọn AI Model:", ["gemini-3.5-flash", "gemini-2.5-pro"])
 
 if not api_key:
-    st.warning("Vui lòng cấu hình nhập API Key ở thanh sidebar bên trái để sử dụng phần mềm.")
+    st.warning("Vui lòng nhập API Key ở thanh sidebar bên trái để sử dụng phần mềm.")
     st.stop()
 
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel(model_choice)
 
-# ================= MODULE 1: OCR PDF =================
+# =====================================================================
+# MODULE 1: OCR PDF
+# =====================================================================
 if "OCR" in app_mode:
     st.title("📄 Ứng dụng OCR PDF sang Excel/Word")
     
@@ -161,7 +166,7 @@ if "OCR" in app_mode:
                         else:
                             prompt = "Chép lại nội dung văn bản. Giữ nguyên định dạng lề. In đậm bằng **văn bản**. Tiêu đề dùng dấu #. Bảng biểu kẻ bằng định dạng hàng dọc Markdown (|). Tuyệt đối không sinh thẻ HTML <br>."
                         
-                        if remove_graphics: prompt += "\n- QUAN TRỌNG: TUYỆT ĐỐI BỎ QUA không đọc logo, hình ảnh con dấu, hoặc chữ ký chữ viết tay."
+                        if remove_graphics: prompt += "\n- QUAN TRỌNG: TUYỆT ĐỐI BỎ QUA không đọc logo, hình ảnh con dấu, hoặc chữ ký."
 
                         response = model.generate_content([prompt, gemini_file])
                         ai_response_text = response.text.strip()
@@ -180,6 +185,7 @@ if "OCR" in app_mode:
                             all_dataframes.append(df)
                         except: pass
                     else:
+                        # Làm sạch thẻ rác HTML
                         cl_text = ai_response_text.replace("```markdown", "").replace("```", "")
                         cl_text = re.sub(r'<br\s*/?>', '\n', cl_text, flags=re.IGNORECASE).strip()
                         all_text_chunks.append(cl_text)
@@ -190,6 +196,7 @@ if "OCR" in app_mode:
             doc.close()
             status_text.success("🎉 Quy trình xử lý OCR đã hoàn thành thành công!")
 
+            # ĐÓNG GÓI
             if "EXCEL" in export_mode and all_dataframes:
                 final_df = pd.concat(all_dataframes, ignore_index=True)
                 excel_output = io.BytesIO()
@@ -200,26 +207,100 @@ if "OCR" in app_mode:
                 st.session_state.preview_data = final_df.head(20)
             elif "WORD" in export_mode and all_text_chunks:
                 word_doc = Document()
-                for line in "\n\n".join(all_text_chunks).split('\n'):
-                    if not line.strip(): continue
-                    p = word_doc.add_paragraph(line.strip().replace('**', ''))
+                full_text = "\n\n".join(all_text_chunks)
+                
+                in_table = False
+                current_table = None
+
+                for line in full_text.split('\n'):
+                    line = line.strip()
+                    if not line:
+                        in_table = False
+                        continue
+                    
+                    if line.startswith('|') and line.endswith('|'):
+                        cells = [c.strip() for c in line.split('|')[1:-1]]
+                        if all(c.replace('-', '').replace(':', '').strip() == '' for c in cells):
+                            continue
+                            
+                        if not in_table:
+                            in_table = True
+                            current_table = word_doc.add_table(rows=1, cols=len(cells))
+                            current_table.style = 'Table Grid'
+                            row_cells = current_table.rows[0].cells
+                            for i, cell in enumerate(cells):
+                                if i < len(row_cells):
+                                    row_cells[i].text = cell.replace('**', '')
+                        else:
+                            row_cells = current_table.add_row().cells
+                            for i, cell in enumerate(cells):
+                                if i < len(row_cells):
+                                    row_cells[i].text = cell.replace('**', '')
+                        continue
+                    else:
+                        in_table = False
+                    
+                    align = WD_ALIGN_PARAGRAPH.LEFT
+                    if "<center>" in line and "</center>" in line:
+                        align = WD_ALIGN_PARAGRAPH.CENTER
+                        line = line.replace("<center>", "").replace("</center>", "")
+                    
+                    if line.startswith('#'):
+                        level = len(line) - len(line.lstrip('#'))
+                        text_content = line.lstrip('#').strip()
+                        p = word_doc.add_heading(text_content, level=min(level, 9))
+                        p.alignment = align
+                        continue
+                    
+                    p = word_doc.add_paragraph()
+                    p.alignment = align
+                    parts = re.split(r'(\*\*.*?\*\*)', line)
+                    for part in parts:
+                        if part.startswith('**') and part.endswith('**'):
+                            run = p.add_run(part[2:-2])
+                            run.bold = True
+                        else:
+                            p.add_run(part)
+                            
                 word_output = io.BytesIO()
                 word_doc.save(word_output)
                 st.session_state.processed_data = word_output.getvalue()
                 st.session_state.export_mode_used = "WORD"
-                st.session_state.preview_data = "Văn bản đã trích xuất thành công."
+                st.session_state.preview_data = full_text
         except Exception as e:
             st.error(f"❌ Lỗi hệ thống: {e}")
 
+    # ===== TẢI XUỐNG OCR =====
     if st.session_state.processed_data:
         st.markdown("---")
+        st.success("✅ **KẾT QUẢ ĐÃ SẴN SÀNG!**")
+        
         if st.session_state.export_mode_used == "EXCEL":
             st.dataframe(st.session_state.preview_data)
-            st.download_button("📥 Tải về file EXCEL (.xlsx)", data=st.session_state.processed_data, file_name="Ket_Qua_OCR.xlsx", use_container_width=True)
+            b64_excel = base64.b64encode(st.session_state.processed_data).decode()
+            html_excel = f'''
+            <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64_excel}" download="Ket_Qua_OCR.xlsx" 
+               style="display: block; width: 100%; text-align: center; padding: 0.5rem 1rem; background-color: #2e7d32; color: white; text-decoration: none; border-radius: 0.5rem; font-weight: bold; margin-bottom: 1rem;">
+                📥 BẤM VÀO ĐÂY ĐỂ TẢI FILE EXCEL VỀ MÁY
+            </a>
+            '''
+            st.markdown(html_excel, unsafe_allow_html=True)
+            
         else:
-            st.download_button("📥 Tải về file WORD (.docx)", data=st.session_state.processed_data, file_name="Ket_Qua_OCR.docx", use_container_width=True)
+            with st.expander("Hiển thị dữ liệu văn bản thô (Xem trước)"):
+                st.text(st.session_state.preview_data)
+            b64_word = base64.b64encode(st.session_state.processed_data).decode()
+            html_word = f'''
+            <a href="data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,{b64_word}" download="Ket_Qua_OCR.docx" 
+               style="display: block; width: 100%; text-align: center; padding: 0.5rem 1rem; background-color: #1565c0; color: white; text-decoration: none; border-radius: 0.5rem; font-weight: bold; margin-bottom: 1rem;">
+                📥 BẤM VÀO ĐÂY ĐỂ TẢI FILE WORD VỀ MÁY
+            </a>
+            '''
+            st.markdown(html_word, unsafe_allow_html=True)
 
-# ================= MODULE 2: DỊCH TÀI LIỆU (Bổ sung bộ lọc) =================
+# =====================================================================
+# MODULE 2: DỊCH TÀI LIỆU
+# =====================================================================
 elif "Dịch" in app_mode:
     st.title("🌐 Ứng dụng Dịch Tài Liệu (Bảo toàn cấu trúc ô gốc)")
     
@@ -227,11 +308,10 @@ elif "Dịch" in app_mode:
     with col1:
         target_lang = st.selectbox("Lựa chọn ngôn ngữ đích cần dịch sang:", ["Tiếng Lào", "Tiếng Việt", "Tiếng Anh"])
     with col2:
-        font_map = {"Tiếng Lào": "Saysettha Laos OT", "Tiếng Việt": "Times New Roman", "Tiếng Anh": "Times New Roman"}
+        font_map = {"Tiếng Lào": "Saysettha OT", "Tiếng Việt": "Times New Roman", "Tiếng Anh": "Times New Roman"}
         target_font = font_map[target_lang]
         st.info(f"🔤 Font hệ thống áp dụng cho bản dịch: **{target_font}**")
 
-    # BỔ SUNG CÁC CHỨC NĂNG TÙY CHỌN LỌC DỊCH THÔNG MINH
     st.sidebar.subheader("⚙️ Bộ lọc dịch thuật nâng cao")
     skip_english = st.sidebar.checkbox("🔤 Giữ nguyên gốc Tiếng Anh (Không dịch)", value=True)
     skip_abbreviations = st.sidebar.checkbox("🔽 Giữ nguyên từ viết tắt (BOQ, BTCT, ...)", value=True)
@@ -249,9 +329,9 @@ elif "Dịch" in app_mode:
             
             if st.button(f"🚀 Tiến hành dịch Sheet '{selected_sheet}'"):
                 st.session_state.trans_processed_data = None
+                st.session_state.trans_file_name = None
                 ws = wb[selected_sheet]
                 
-                # Quét và bóc tách dữ liệu chuỗi chữ văn bản thô
                 texts_to_trans = set()
                 for row in ws.iter_rows():
                     for cell in row:
@@ -261,20 +341,16 @@ elif "Dịch" in app_mode:
                                 texts_to_trans.add(val)
                 
                 texts_list = list(texts_to_trans)
-                st.info(f"🔎 Đã phát hiện {len(texts_list)} cụm chuỗi văn bản độc lập. Đang chuẩn bị dịch thuật cuốn chiếu...")
+                st.info(f"🔎 Đã phát hiện {len(texts_list)} cụm chuỗi văn bản độc lập. Đang chuẩn bị dịch thuật...")
                 
-                # Thực hiện dịch kèm cấu hình bộ lọc loại trừ
                 translation_map = translate_texts_batch(texts_list, target_lang, model, skip_english, skip_abbreviations)
                 
-                # Đổ ngược dữ liệu dịch vào bảng tính gốc (Bảo toàn ô Merge và trạng thái Bold)
                 for row in ws.iter_rows():
                     for cell in row:
                         if cell.value and isinstance(cell.value, str):
                             val = str(cell.value).strip()
                             if val in translation_map:
                                 cell.value = translation_map[val]
-                                
-                                # Khôi phục trạng thái in đậm in nghiêng và đè font chữ quy chuẩn
                                 old_font = cell.font
                                 is_bold = old_font.bold if old_font else False
                                 is_italic = old_font.italic if old_font else False
@@ -288,13 +364,13 @@ elif "Dịch" in app_mode:
 
         # --- LUỒNG XỬ LÝ FILE WORD ---
         elif file_ext == "docx":
-            trans_mode = st.radio("Cấu hình chế độ hiển thị bản dịch Word:", ["Dịch thay thế (Ghi đè trực tiếp nội dung gốc)", "Dịch song song (Chèn dòng dịch in đậm ngay dưới dòng gốc)"])
+            trans_mode = st.radio("Cấu hình chế độ hiển thị bản dịch Word:", ["Dịch thay thế (Ghi đè nội dung gốc)", "Dịch song song (Chèn dòng dịch in đậm dưới gốc)"])
             
             if st.button("🚀 Tiến hành dịch file Word"):
                 st.session_state.trans_processed_data = None
+                st.session_state.trans_file_name = None
                 doc = Document(trans_file)
                 
-                # Tập hợp toàn bộ phân đoạn (bao gồm text thường và văn bản nằm trong bảng biểu)
                 all_paragraphs = list(doc.paragraphs)
                 for table in doc.tables:
                     for row in table.rows:
@@ -310,19 +386,15 @@ elif "Dịch" in app_mode:
                 st.info(f"🔎 Tổng số đoạn văn bản phát hiện: {len(texts_to_trans)} đoạn. Đang kết nối dịch thuật...")
                 translation_map = translate_texts_batch(texts_to_trans, target_lang, model, skip_english, skip_abbreviations)
                 
-                # Đổ dữ liệu biên dịch ngược lại tệp tài liệu Word
                 for p in all_paragraphs:
                     orig_val = p.text.strip()
                     if orig_val in translation_map:
                         trans_val = translation_map[orig_val]
-                        
                         if "song song" in trans_mode:
-                            # Chế độ song song: Tạo phím xuống dòng ngầm và chèn chữ dịch in đậm phía dưới
                             run = p.add_run("\n" + trans_val)
                             run.bold = True
                             set_docx_font(run, target_font)
                         else:
-                            # Chế độ thay thế hoàn toàn: Xóa rỗng phân đoạn cũ và chèn chữ dịch đè lên
                             p.clear()
                             run = p.add_run(trans_val)
                             set_docx_font(run, target_font)
@@ -333,12 +405,17 @@ elif "Dịch" in app_mode:
                 st.session_state.trans_file_name = f"Dich_{target_lang}_{trans_file.name}"
                 st.success("🎉 Bản dịch tài liệu Word đã sẵn sàng!")
 
-    # Khu vực render hiển thị nút tải tài liệu dịch thuật ổn định độc lập
+    # ===== TẢI XUỐNG DỊCH THUẬT =====
     if st.session_state.trans_processed_data:
         st.markdown("---")
-        st.download_button(
-            label="📥 BẤM VÀO ĐÂY ĐỂ TẢI BẢN DỊCH VỀ MÁY",
-            data=st.session_state.trans_processed_data,
-            file_name=st.session_state.trans_file_name,
-            use_container_width=True
-        )
+        mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if st.session_state.trans_file_name.endswith("xlsx") else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        bg_color = "#2e7d32" if st.session_state.trans_file_name.endswith("xlsx") else "#1565c0"
+        
+        b64_trans = base64.b64encode(st.session_state.trans_processed_data).decode()
+        html_trans = f'''
+        <a href="data:{mime_type};base64,{b64_trans}" download="{st.session_state.trans_file_name}" 
+           style="display: block; width: 100%; text-align: center; padding: 0.5rem 1rem; background-color: {bg_color}; color: white; text-decoration: none; border-radius: 0.5rem; font-weight: bold; margin-bottom: 1rem;">
+            📥 BẤM VÀO ĐÂY ĐỂ TẢI BẢN DỊCH VỀ MÁY
+        </a>
+        '''
+        st.markdown(html_trans, unsafe_allow_html=True)
