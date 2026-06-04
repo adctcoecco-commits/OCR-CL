@@ -5,3 +5,4 @@ pandas
 openpyxl
 python-docx
 xlsxwriter
+base64
