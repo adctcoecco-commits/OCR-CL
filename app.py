@@ -55,12 +55,17 @@ def translate_texts_batch(texts_list, target_lang, model, skip_english, skip_abb
         status.text(f"⏳ Đang biên dịch câu số {current_processed}/{len(texts_list)}...")
         progress_bar.progress(current_processed / len(texts_list))
         
-        # Xây dựng Prompt dịch thuật tích hợp bộ lọc điều kiện
+     # Xây dựng Prompt dịch thuật tích hợp bộ lọc điều kiện và chống dịch ngược
         prompt = f"""
-        Bạn là dịch giả kỹ thuật chuyên nghiệp. Hãy dịch mảng JSON chứa các chuỗi văn bản sau sang {target_lang}.
-        - CHÚ Ý: Giữ nguyên các thuật ngữ kỹ thuật lõi, tên riêng, các thông số số liệu và con số.
-        - BẮT BUỘC: Trả về DUY NHẤT một mảng JSON các chuỗi đã dịch. Mảng kết quả PHẢI CÓ ĐÚNG {len(chunk)} phần tử và giữ TUYỆT ĐỐI NGUYÊN THỨ TỰ.
-        - KHÔNG kèm theo các ký tự định dạng khối mã Markdown (như ```json) hay bất kỳ câu chữ giải thích nào khác ngoài mảng JSON.
+        Bạn là dịch giả kỹ thuật chuyên nghiệp. Nhiệm vụ của bạn là đồng nhất mảng JSON văn bản sau hoàn toàn sang {target_lang}.
+        
+        QUY TẮC QUAN TRỌNG NHẤT:
+        1. XỬ LÝ ĐA NGÔN NGỮ (CHỐNG DỊCH NGƯỢC): Văn bản đầu vào đang bị trộn lẫn nhiều ngôn ngữ.
+           -> BẮT BUỘC: Nếu một chuỗi (hoặc câu) ĐÃ LÀ {target_lang} rồi, bạn PHẢI GIỮ NGUYÊN toàn bộ chuỗi đó. Tuyệt đối không được dịch ngược nó sang Tiếng Việt hay bất kỳ ngôn ngữ nào khác.
+           -> Chỉ tiến hành dịch những chuỗi CHƯA PHẢI là {target_lang} sang {target_lang}.
+        2. BẢO TOÀN DỮ LIỆU: Giữ nguyên các thuật ngữ kỹ thuật, tên riêng (như địa danh Xaysomboun, Vientiane, tên công ty...), thông số đo lường và con số.
+        3. ĐỊNH DẠNG ĐẦU RA: BẮT BUỘC trả về DUY NHẤT một mảng JSON chứa các chuỗi kết quả. Mảng này PHẢI CÓ ĐÚNG {len(chunk)} phần tử và giữ TUYỆT ĐỐI NGUYÊN THỨ TỰ so với đầu vào.
+        4. LÀM SẠCH: KHÔNG kèm theo các ký tự định dạng khối mã Markdown (như ```json) hay bất kỳ câu chữ giải thích nào khác ngoài mảng JSON.
         """
         
         # Áp dụng bộ lọc tùy chọn từ phía người dùng
